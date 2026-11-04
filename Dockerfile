@@ -52,6 +52,7 @@ RUN groupadd --gid ${AGENT_GID} jenkins && \
     chown -R jenkins:jenkins /home/jenkins /data/cve-db
 
 COPY scripts/run-rpm-scan /usr/local/bin/run-rpm-scan
+COPY libexec/rpm-scan-agent/scan /usr/local/libexec/rpm-scan-agent/scan
 COPY scripts/send-rpm-event /usr/local/bin/send-rpm-event
 COPY scripts/update-cve-db /usr/local/bin/update-cve-db
 COPY scripts/jenkins-agent-entrypoint /usr/local/bin/jenkins-agent-entrypoint
