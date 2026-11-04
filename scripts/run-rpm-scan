@@ -6,7 +6,13 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+
+
+PRIVATE_DIR = Path(__file__).resolve().parent.parent / "libexec/rpm-scan-agent"
+sys.path.insert(0, str(PRIVATE_DIR))
+from input_snapshot import copy_input
 
 
 def signal_group(process, sig):
@@ -39,6 +45,9 @@ def stop_group(process):
 
 
 def main():
+    if len(sys.argv) != 3:
+        print("Usage: run-rpm-scan RPM_NAME OUTPUT_DIRECTORY", file=sys.stderr)
+        return 2
     cancelled = None
 
     def cancel(signum, _frame):
@@ -50,19 +59,36 @@ def main():
 
     signal.signal(signal.SIGTERM, cancel)
     signal.signal(signal.SIGINT, cancel)
-    worker = Path(__file__).resolve().parent.parent / "libexec/rpm-scan-agent/scan"
+    # Both RPM pipelines pass their event/scan-key digest in this environment.
+    expected_sha256 = os.environ.get("CURRENT_RPM_SHA256", "")
     try:
-        process = subprocess.Popen(["bash", str(worker), *sys.argv[1:]], start_new_session=True)
-    except OSError as error:
-        print(f"Unable to launch RPM scan: {error}", file=sys.stderr)
-        return 127
+        with tempfile.TemporaryDirectory(prefix="rpm-scan-input-") as directory:
+            snapshot, sha256, size = copy_input(
+                sys.argv[1], expected_sha256, directory, lambda: cancelled is not None,
+            )
+            if cancelled is not None:
+                return 128 + cancelled
+            try:
+                process = subprocess.Popen([
+                    "bash", str(PRIVATE_DIR / "scan"), *sys.argv[1:],
+                    str(snapshot), sha256, str(size),
+                ], start_new_session=True)
+            except OSError as error:
+                print(f"Unable to launch RPM scan: {error}", file=sys.stderr)
+                return 127
 
-    try:
-        while cancelled is None and process.poll() is None:
-            time.sleep(0.05)
-    finally:
-        stop_group(process)
+            try:
+                while cancelled is None and process.poll() is None:
+                    time.sleep(0.05)
+            finally:
+                stop_group(process)
 
+    except InterruptedError:
+        if cancelled is None:
+            raise
+    except (OSError, ValueError) as error:
+        print(f"Unable to prepare RPM scan input: {error}", file=sys.stderr)
+        return 2
     if cancelled is not None:
         return 128 + cancelled
     return process.returncode if process.returncode >= 0 else 128 - process.returncode

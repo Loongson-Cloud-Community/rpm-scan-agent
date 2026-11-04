@@ -53,6 +53,7 @@ RUN groupadd --gid ${AGENT_GID} jenkins && \
 
 COPY scripts/run-rpm-scan /usr/local/bin/run-rpm-scan
 COPY libexec/rpm-scan-agent/scan /usr/local/libexec/rpm-scan-agent/scan
+COPY libexec/rpm-scan-agent/input_snapshot.py /usr/local/libexec/rpm-scan-agent/input_snapshot.py
 COPY scripts/send-rpm-event /usr/local/bin/send-rpm-event
 COPY scripts/update-cve-db /usr/local/bin/update-cve-db
 COPY scripts/jenkins-agent-entrypoint /usr/local/bin/jenkins-agent-entrypoint
