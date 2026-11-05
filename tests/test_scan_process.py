@@ -15,17 +15,13 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCANNER = '''#!/usr/bin/env python3
-import hashlib, json, os, signal, subprocess, sys, time
+import json, os, signal, subprocess, sys, time
 from pathlib import Path
 if sys.argv[1:] == ["--version"]:
     print("test-version")
     raise SystemExit(0)
 mode = os.environ.get("TEST_MODE", "normal")
 output = sys.argv[sys.argv.index("--output-file") + 1]
-source = Path(sys.argv[-1])
-Path(os.environ["TEST_SCANNER_INPUT"]).write_text(json.dumps({
-    "path": str(source), "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-}))
 if mode in {"running", "ignore-term", "orphan"}:
     child = subprocess.Popen([sys.executable, "-c",
         "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(300)"],
@@ -43,17 +39,8 @@ raise SystemExit(int(os.environ.get("TEST_EXIT", "0")))
 '''
 
 RPM_QUERY = '''#!/usr/bin/env python3
-import hashlib, json, os, sys
+import os
 from pathlib import Path
-source = Path(sys.argv[-1])
-Path(os.environ["TEST_QUERY_INPUT"]).write_text(json.dumps({
-    "path": str(source), "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-}))
-if os.environ.get("TEST_REPLACE_SOURCE"):
-    original = Path(os.environ["TEST_SOURCE_FILE"])
-    replacement = original.with_suffix(".replacement")
-    replacement.write_bytes(b"replacement package")
-    replacement.replace(original)
 Path(os.environ["TEST_QUERIED"]).touch()
 print("test\\n0\\n1\\n1\\nloongarch64\\ntest-1-1.src.rpm")
 '''
@@ -66,7 +53,7 @@ def running(pid):
         return False
 
 
-class ScanTestCase(unittest.TestCase):
+class ScanProcessTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="rpm-process-")
         self.addCleanup(self.temp.cleanup)
@@ -84,7 +71,6 @@ class ScanTestCase(unittest.TestCase):
             path.chmod(0o755)
         source = Path("/scan-input/test-1-1.loongarch64.rpm")
         source.write_bytes(b"test package")
-        self.source = source
         self.addCleanup(source.unlink, missing_ok=True)
         self.output = self.root / "output"
         self.cache = self.root / "cache"
@@ -94,10 +80,6 @@ class ScanTestCase(unittest.TestCase):
             "XDG_CACHE_HOME": str(self.cache), "CVE_UPDATE_MODE": "never",
             "TEST_PIDS": str(self.root / "pids.json"),
             "TEST_QUERIED": str(self.root / "queried"),
-            "CURRENT_RPM_SHA256": hashlib.sha256(source.read_bytes()).hexdigest(),
-            "TEST_SOURCE_FILE": str(source),
-            "TEST_QUERY_INPUT": str(self.root / "query-input.json"),
-            "TEST_SCANNER_INPUT": str(self.root / "scanner-input.json"),
         }
         self.processes = []
         self.addCleanup(self.stop_remaining)
@@ -135,8 +117,6 @@ class ScanTestCase(unittest.TestCase):
         with (self.cache / ".cve-db.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
-
-class ScanProcessTests(ScanTestCase):
     def test_normal_scan_keeps_reports_and_exit_code(self):
         proc = self.start()
         stdout, stderr = proc.communicate(timeout=8)
@@ -146,6 +126,21 @@ class ScanProcessTests(ScanTestCase):
         self.assertEqual(manifest["scanner"]["exit_code"], 0)
         self.assertIn("completed", stdout)
         self.assert_lock_released()
+
+    def test_scan_needs_no_pipeline_context(self):
+        for name in ("CURRENT_RPM_SHA256", "BUILD_NUMBER", "JOB_NAME", "WORKSPACE"):
+            self.env.pop(name, None)
+        proc = self.start()
+        _, stderr = proc.communicate(timeout=8)
+        self.assertEqual(proc.returncode, 0, stderr)
+        manifest = json.loads((self.output / "scan-manifest.json").read_text())
+        self.assertEqual(manifest["rpm"]["sha256"], hashlib.sha256(b"test package").hexdigest())
+        self.assertEqual(manifest["rpm"]["size_bytes"], len(b"test package"))
+
+    def test_pipeline_private_hash_variable_is_ignored(self):
+        proc = self.start(CURRENT_RPM_SHA256="not-a-digest")
+        _, stderr = proc.communicate(timeout=8)
+        self.assertEqual(proc.returncode, 0, stderr)
 
     def test_findings_exit_one_remains_success(self):
         proc = self.start(TEST_EXIT="1")
