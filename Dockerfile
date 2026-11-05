@@ -1,38 +1,38 @@
-FROM lcr.loongnix.cn/library/openjdk:21-jdk
+FROM lcr.loongnix.cn/loongnix-server/loongnix-server:23.3
+RUN sed -i '/\[updates\]/,/enabled=/ s/enabled=1/enabled=0/' /etc/yum.repos.d/Loongnix-Server.repo
 
-ARG CVE_BIN_TOOL_RELEASE=20260930
-ARG CVE_BIN_TOOL_ARCHIVE=cve-bin-tool-20260930-la64-py314.tar.gz
+ARG CVE_BIN_TOOL_RELEASE=20261103
+ARG CVE_BIN_TOOL_ARCHIVE=cve-bin-tool-20261103-la64-py314.tar.gz
 ARG JENKINS_AGENT_JAR_URL
 
-ENV PATH="/cve-bin-tool/.venv/bin:${PATH}" \
+ENV PATH="/usr/lib/jvm/jdk-25.0.4/bin:cve-bin-tool/.venv/bin:${PATH}" \
     HOME=/home/jenkins \
     JENKINS_AGENT_WORKDIR=/home/jenkins/agent \
     XDG_CACHE_HOME=/data/cve-db
 
 USER root
 
-RUN printf '%s\n' \
-      'deb http://mirrors.ustc.edu.cn/debian unstable main' \
-      > /etc/apt/sources.list && \
-    rm -f /etc/apt/sources.list.d/debian.sources && \
-    apt-get -o Acquire::Retries=5 update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      bash \
+RUN dnf install -y \
       ca-certificates \
       cpio \
       curl \
       file \
       gzip \
-      python3 \
       rpm \
-      rpm2cpio \
+      python3 \
       tar \
       unzip \
-      xz-utils \
+      xz \
       zstd && \
-    rm -rf /var/lib/apt/lists/*
+    dnf clean all
 
-RUN mkdir -p /cve-bin-tool /usr/share/jenkins && \
+RUN mkdir -p /usr/lib/jvm/jdk-25.0.4 && \
+    curl --fail --location --retry 5 \
+      --output /tmp/jdk25.tar.gz \
+      "https://ftp.loongnix.cn/Java/openjdk25/loongson25.5.22-fx-jdk25.0.4_7-linux-loongarch64-glibc2.34.tar.gz" && \
+    tar -xzf /tmp/jdk25.tar.gz -C /usr/lib/jvm/jdk-25.0.4 --strip-components=1 && \
+    rm -f /tmp/jdk25.tar.gz && \
+    mkdir -p /cve-bin-tool /usr/share/jenkins && \
     curl --fail --location --retry 5 \
       --output /tmp/cve-bin-tool.tar.gz \
       "https://github.com/loongarch64-releases/cve-bin-tool/releases/download/${CVE_BIN_TOOL_RELEASE}/${CVE_BIN_TOOL_ARCHIVE}" && \
