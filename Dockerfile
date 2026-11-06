@@ -2,8 +2,8 @@ FROM lcr.loongnix.cn/loongnix-server/loongnix-server:23.3
 RUN sed -i '/\[updates\]/,/enabled=/ s/enabled=1/enabled=0/' /etc/yum.repos.d/Loongnix-Server.repo
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 
-ARG CVE_BIN_TOOL_RELEASE=20261103
-ARG CVE_BIN_TOOL_ARCHIVE=cve-bin-tool-20261103-la64-py314.tar.gz
+ARG CVE_BIN_TOOL_RELEASE=20261106
+ARG CVE_BIN_TOOL_ARCHIVE=cve-bin-tool-20261106-la64-py311.tar.gz
 ARG JENKINS_AGENT_JAR_URL
 
 ENV PATH="/usr/lib/jvm/jdk-25.0.4/bin:cve-bin-tool/.venv/bin:${PATH}" \
