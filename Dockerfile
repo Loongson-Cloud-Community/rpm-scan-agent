@@ -52,12 +52,15 @@ RUN groupadd --gid ${AGENT_GID} jenkins && \
       /data/cve-db && \
     chown -R jenkins:jenkins /home/jenkins /data/cve-db
 
-COPY scripts/run-rpm-scan /usr/local/bin/run-rpm-scan
-COPY libexec/rpm-scan-agent/scan /usr/local/libexec/rpm-scan-agent/scan
-COPY scripts/send-rpm-event /usr/local/bin/send-rpm-event
-COPY libexec/rpm-scan-agent/event_outbox.py /usr/local/libexec/rpm-scan-agent/event_outbox.py
-COPY scripts/update-cve-db /usr/local/bin/update-cve-db
-COPY scripts/jenkins-agent-entrypoint /usr/local/bin/jenkins-agent-entrypoint
+COPY agent-common /tmp/agent-common
+# Event commands use the system interpreter, independent of the scanner venv.
+RUN /usr/bin/python3 /tmp/agent-common/install.py && rm -rf /tmp/agent-common
+
+COPY rpm-scan-agent/scripts/run-rpm-scan /usr/local/bin/run-rpm-scan
+COPY rpm-scan-agent/libexec/rpm-scan-agent/scan /usr/local/libexec/rpm-scan-agent/scan
+COPY rpm-scan-agent/scripts/send-rpm-event /usr/local/bin/send-rpm-event
+COPY rpm-scan-agent/scripts/update-cve-db /usr/local/bin/update-cve-db
+COPY rpm-scan-agent/scripts/jenkins-agent-entrypoint /usr/local/bin/jenkins-agent-entrypoint
 
 RUN chmod 0755 \
       /usr/local/bin/run-rpm-scan \
